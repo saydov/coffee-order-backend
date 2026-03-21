@@ -1,0 +1,120 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: coffee-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-coffee_order}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-coffee_order}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [coffee-net]
+
+  redis:
+    image: redis:7-alpine
+    container_name: coffee-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [coffee-net]
+
+  coffee-admin:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        MODULE: coffee-admin
+    image: coffee-order/coffee-admin:latest
+    container_name: coffee-admin
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-coffee_order}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SERVER_PORT: 8080
+    ports:
+      - "${ADMIN_PORT:-8080}:8080"
+    networks: [coffee-net]
+
+  coffee-board:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        MODULE: coffee-board
+    image: coffee-order/coffee-board:latest
+    container_name: coffee-board
+    restart: unless-stopped
+    depends_on:
+      postgres:     { condition: service_healthy }
+      redis:        { condition: service_healthy }
+      coffee-admin: { condition: service_started }
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-coffee_order}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SERVER_PORT: 8081
+      VENUE_ID: ${VENUE_ID:-}
+    ports:
+      - "${BOARD_PORT:-8081}:8081"
+    networks: [coffee-net]
+
+  coffee-client:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        MODULE: coffee-client
+    image: coffee-order/coffee-client:latest
+    container_name: coffee-client
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-coffee_order}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SERVER_PORT: 8082
+      VENUE_ID: ${VENUE_ID:-}
+      MAP_API_KEY: ${MAP_API_KEY:-f80fc89f-34ed-4464-a287-513c718fd9aa}
+      PAYMENT_BASE_URL: ${PAYMENT_BASE_URL:-https://paybox.wisterk.me}
+      PAYMENT_API_KEY: ${PAYMENT_API_KEY:-123qwe}
+      JWT_SECRET: ${JWT_SECRET:-coffee-order-secret-key-that-is-at-least-256-bits-long-for-hs256}
+      JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-604800000}
+    ports:
+      - "${CLIENT_PORT:-8082}:8082"
+    networks: [coffee-net]
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  coffee-net:
+    driver: bridge

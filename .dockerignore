@@ -1,0 +1,16 @@
+**/target/
+**/.idea/
+**/.vscode/
+**/.git/
+**/.gitignore
+**/.DS_Store
+postgres_data/
+REFERENCE/
+*.iml
+*.iws
+*.ipr
+.mvn/
+mvnw
+mvnw.cmd
+**/*.md
+!README.md
